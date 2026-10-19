@@ -36,8 +36,8 @@ Open http://localhost:8080. The production output is in `dist/`; never commit ge
 ## Custom domain
 
 - Cloudflare record: `circuitquest.heroacademy.app CNAME mightora.github.io`, **DNS only**.
-- Custom-domain file: `public/CNAME` copied to `dist/CNAME` during build.
-- In GitHub **Settings → Pages**, choose **GitHub Actions** as source and confirm custom domain and HTTPS.
+- Compatibility CNAME file: `public/CNAME` copied to `dist/CNAME`. **GitHub ignores CNAME files when deploying through a custom Actions workflow**; it does not replace configuring the domain in Settings → Pages.
+- In GitHub **Settings → Pages**, choose **GitHub Actions** as source, set the custom domain to `circuitquest.heroacademy.app`, click Save, and then enable HTTPS when available.
 - Open the website and ensure both TLS and its static assets work after the Pages deployment completes.
 - The repository workflow must have permission to deploy Pages; this is controlled by repository settings as well as its declared permissions.
 
