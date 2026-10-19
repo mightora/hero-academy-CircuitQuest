@@ -78,10 +78,11 @@ function partSvg(p:Part){
  const terminals=(['a','b'] as const).map(end=>{
   const x=end==='a'?-BOARD.terminalOffset:BOARD.terminalOffset;
   const chosen=terminal===p.id+':'+end;
-  return `<g class="terminal-target ${chosen?'terminal-selected':''}" data-action="terminal" data-terminal="${p.id}:${end}" role="button" tabindex="0" aria-label="Connect terminal ${end.toUpperCase()} on ${p.kind}">
+  return `<g class="terminal-target ${chosen?'terminal-selected':''}" data-action="terminal" data-terminal="${p.id}:${end}" role="button" tabindex="0" aria-label="Connect terminal ${end.toUpperCase()} on ${p.kind}${p.kind==='cell'?(end==='a'?' positive (+)':' negative (−)'):''}">
    <circle cx="${x}" cy="0" r="${BOARD.touchRadius}" fill="transparent" pointer-events="all"></circle>
    <circle class="terminal" cx="${x}" cy="0" r="${BOARD.terminalRadius}" fill="${chosen?'#ef733e':'#f6d46c'}" stroke="#14353b" stroke-width="4" pointer-events="none"></circle>
    <text x="${x}" y="7" text-anchor="middle" font-size="19" font-weight="900" fill="#14353b" pointer-events="none">${end.toUpperCase()}</text>
+   ${p.kind==='cell'?`<text x="${x}" y="52" text-anchor="middle" font-size="23" font-weight="900" fill="#14353b" pointer-events="none">${end==='a'?'+':'−'}</text>`:''}
   </g>`;
  }).join('');
  return `<g class="component ${selectedHere?'selected':''} ${current?'lit':''}" transform="translate(${p.x} ${p.y})">${body}${terminals}</g>`;
