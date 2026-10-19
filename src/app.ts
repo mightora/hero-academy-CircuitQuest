@@ -1,5 +1,6 @@
 import {CATALOG,UNAVAILABLE,template,makePart,simulate,validate,type Circuit,type Kind,type Part} from './engine.js';
 import {REGIONS,MISSIONS,SIDE_ACTIVITIES,STARTER_TEMPLATES,startingCircuit,practiceQuestion,type Mission} from './missions.js';
+import {BOARD,viewport,terminalPoint,wireRoute,spreadParts,nextFreePosition} from './board.js';
 
 type RecordProgress={completed:boolean;independent:boolean;attempts:number;assisted:boolean};
 type Profile={name:string;suit:string;progress:Record<string,RecordProgress>;saved:Record<string,Circuit>;minutes:number;startedAt:number;settings:{diagram:boolean;big:boolean;contrast:boolean;reduce:boolean};side:string[]};
@@ -67,19 +68,43 @@ function missionScreen(){
  return header+`<section class="panel mission-panel">${inner}</section>`+(pr?.completed?'<p class="fine">This mission has a previous completion record; replay is welcome.</p>':'');
 }
 function miniDisplay(c:Circuit){const result=simulate(c);return `<div class="mini-diagram"><span>🔋 Cell</span><span>→</span><span>🔘 Switch</span><span>→</span><span>${c.parts.some(p=>p.kind==='buzzer')?'🔔':c.parts.some(p=>p.kind==='motor')?'⚙️':'💡'} ${result.status==='ok'?'ON':'OFF'}</span><span>↩ Complete loop</span></div><small>${result.status==='ok'?'The circuit supplies a load.':result.warnings.join(' ')}</small>`}
-function editingTools(){return `<div class="toolbar"><div class="catalogue" aria-label="Add a component">${CATALOG.map(e=>`<button data-action="add" data-kind="${e.kind}" title="${escapeHtml(e.model)}"><span aria-hidden="true">${e.emoji}</span> ${escapeHtml(e.label)}</button>`).join('')}</div><div class="button-row"><button data-action="undo" ${!history.length?'disabled':''}>↶ Undo</button><button data-action="redo" ${!future.length?'disabled':''}>↷ Redo</button><button data-action="zoom-in">Zoom +</button><button data-action="zoom-out">Zoom −</button></div></div>`}
+function editingTools(){return `<div class="toolbar"><div class="catalogue" aria-label="Add a component">${CATALOG.map(e=>`<button data-action="add" data-kind="${e.kind}" title="${escapeHtml(e.model)}"><span aria-hidden="true">${e.emoji}</span> ${escapeHtml(e.label)}</button>`).join('')}</div><div class="button-row"><button data-action="undo" ${!history.length?'disabled':''}>↶ Undo</button><button data-action="redo" ${!future.length?'disabled':''}>↷ Redo</button><button data-action="spread">↔ Spread out</button><button data-action="zoom-in">🔎 Larger</button><button data-action="zoom-out">🔍 Smaller</button></div></div>`}
 function partSvg(p:Part){
  const current=last.readings[p.id]?.active,selectedHere=p.id===selected;
  const label=CATALOG.find(x=>x.kind===p.kind)?.emoji||'?';
- return `<g class="component ${selectedHere?'selected':''} ${current?'lit':''}" transform="translate(${p.x} ${p.y})">
- <rect x="-43" y="-28" width="86" height="56" rx="14" fill="${current?'#d9eee1':'#fffdf7'}" stroke="${selectedHere?'#ef733e':'#126b62'}" stroke-width="${selectedHere?'4':'2'}" data-action="select-part" data-id="${p.id}" role="button" tabindex="0" aria-label="Select ${p.kind}"></rect>
- <text x="0" y="2" text-anchor="middle" font-size="20" pointer-events="none">${player.settings.diagram?symbol(p.kind):label}</text><text x="0" y="18" text-anchor="middle" font-size="10" pointer-events="none">${escapeHtml(p.kind)}</text>
- <circle class="terminal" cx="-58" cy="0" r="14" data-action="terminal" data-terminal="${p.id}:a" role="button" tabindex="0" aria-label="Connect left terminal of ${p.kind}" fill="${terminal===p.id+':a'?'#ef733e':'#f6d46c'}"></circle><circle class="terminal" cx="58" cy="0" r="14" data-action="terminal" data-terminal="${p.id}:b" role="button" tabindex="0" aria-label="Connect right terminal of ${p.kind}" fill="${terminal===p.id+':b'?'#ef733e':'#f6d46c'}"></circle></g>`;
+ const body=`<rect x="-55" y="-35" width="110" height="70" rx="17" fill="${current?'#d9eee1':'#fffdf7'}" stroke="${selectedHere?'#ef733e':'#126b62'}" stroke-width="${selectedHere?'5':'3'}" data-action="select-part" data-id="${p.id}" role="button" tabindex="0" aria-label="Select ${p.kind}"></rect>
+ <text x="0" y="4" text-anchor="middle" font-size="26" pointer-events="none">${player.settings.diagram?symbol(p.kind):label}</text>
+ <text x="0" y="26" text-anchor="middle" font-size="14" font-weight="bold" fill="#14353b" pointer-events="none">${escapeHtml(p.kind)}</text>`;
+ const terminals=(['a','b'] as const).map(end=>{
+  const x=end==='a'?-BOARD.terminalOffset:BOARD.terminalOffset;
+  const chosen=terminal===p.id+':'+end;
+  return `<g class="terminal-target ${chosen?'terminal-selected':''}" data-action="terminal" data-terminal="${p.id}:${end}" role="button" tabindex="0" aria-label="Connect terminal ${end.toUpperCase()} on ${p.kind}">
+   <circle cx="${x}" cy="0" r="${BOARD.touchRadius}" fill="transparent" pointer-events="all"></circle>
+   <circle class="terminal" cx="${x}" cy="0" r="${BOARD.terminalRadius}" fill="${chosen?'#ef733e':'#f6d46c'}" stroke="#14353b" stroke-width="4" pointer-events="none"></circle>
+   <text x="${x}" y="7" text-anchor="middle" font-size="19" font-weight="900" fill="#14353b" pointer-events="none">${end.toUpperCase()}</text>
+  </g>`;
+ }).join('');
+ return `<g class="component ${selectedHere?'selected':''} ${current?'lit':''}" transform="translate(${p.x} ${p.y})">${body}${terminals}</g>`;
 }
 function symbol(k:Kind){return ({cell:'┃│',lamp:'⊗',switch:'╱',buzzer:'◖))',motor:'Ⓜ',resistor:'▭',ammeter:'Ⓐ',voltmeter:'Ⓥ',led:'⇥',diode:'▷|',electromagnet:'∿'} as Partial<Record<Kind,string>>)[k]||'◇'}
-function terminalPos(end:string){const [id,t]=end.split(':');const p=circuit.parts.find(x=>x.id===id);return p?{x:p.x+(t==='a'?-58:58),y:p.y}:{x:0,y:0}}
-function drawing(){const w=`<g class="wires">${circuit.wires.map((x,i)=>{const a=terminalPos(x.from),b=terminalPos(x.to);const midpoint=(a.x+b.x)/2;return `<path d="M${a.x},${a.y} L${midpoint},${a.y} L${midpoint},${b.y} L${b.x},${b.y}" stroke="#126b62" fill="none" stroke-width="5" stroke-linejoin="round"/><circle cx="${midpoint}" cy="${(a.y+b.y)/2}" r="9" data-action="delete-wire" data-index="${i}" fill="#f6d46c" stroke="#14353b"><title>Tap to remove wire ${i+1}</title></circle>`}).join('')}</g>`;
- return `<svg class="circuit-svg" viewBox="0 0 ${Math.round(600/zoom)} ${Math.round(420/zoom)}" aria-label="Circuit canvas with ${circuit.parts.length} components and ${circuit.wires.length} wires" role="group"><defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="2" fill="#c9d9d1"/></pattern></defs><rect width="100%" height="100%" fill="url(#dots)"/>${showWires?w:''}${circuit.parts.map(partSvg).join('')}</svg>`;
+function drawing(){
+ const bounds=viewport(circuit.parts);
+ const wires=`<g class="wires">${circuit.wires.map((wire,i)=>{
+  const route=wireRoute(circuit.parts,wire,i);
+  return `<g class="wire"><path d="${route.d}" class="wire-outline"/><path d="${route.d}" class="wire-line"/><g class="wire-remove" data-action="delete-wire" data-index="${i}" role="button" tabindex="0" aria-label="Remove wire ${i+1}"><circle cx="${route.handle.x}" cy="${route.handle.y}" r="20" fill="#fffdf7" stroke="#14353b" stroke-width="3"/><text x="${route.handle.x}" y="7" text-anchor="middle" font-size="22" font-weight="bold" fill="#a33923" pointer-events="none">×</text></g></g>`;
+ }).join('')}</g>`;
+ return `<svg class="circuit-svg" style="min-width:${Math.round(bounds.width*zoom)}px" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" aria-label="Circuit canvas containing ${circuit.parts.length} components and ${circuit.wires.length} connected wires" role="group">
+ <defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="2" fill="#d0e1d7"/></pattern></defs>
+ <rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="#f5f8ef"/>
+ <rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="url(#dots)"/>
+ ${showWires?wires:''}${circuit.parts.map(partSvg).join('')}</svg>`;
+}
+function connectionList(){
+ if(!circuit.wires.length)return '<p class="fine">No wires connected yet. Tap two yellow terminals marked A or B to make your first connection.</p>';
+ return `<div class="connection-list" aria-label="Connected wires">${circuit.wires.map((w,i)=>{
+   const componentLabel=(t:string)=>{const [id,end]=t.split(':');return (circuit.parts.find(p=>p.id===id)?.kind||id)+' '+end.toUpperCase()};
+   return `<div class="connection"><span>➜ ${escapeHtml(componentLabel(w.from))} — ${escapeHtml(componentLabel(w.to))}</span><button data-action="delete-wire" data-index="${i}" aria-label="Remove wire from ${escapeHtml(componentLabel(w.from))} to ${escapeHtml(componentLabel(w.to))}">✕ Remove</button></div>`;
+ }).join('')}</div>`;
 }
 function properties(){
  const p=circuit.parts.find(x=>x.id===selected);if(!p)return '<p>Select a component to inspect it.</p>';
@@ -91,7 +116,17 @@ function properties(){
  <p><b>Voltage:</b> ${r?Math.abs(r.voltage).toFixed(3):'—'} V<br><b>Current:</b> ${r?Math.abs(r.current).toFixed(4):'—'} A<br><b>Power:</b> ${r?Math.abs(r.power).toFixed(3):'—'} W</p>
  <div class="button-row"><button data-action="terminal" data-terminal="${p.id}:a">⚪ Connect A</button><button data-action="terminal" data-terminal="${p.id}:b">⚪ Connect B</button><button data-action="move" data-dir="-1,0">←</button><button data-action="move" data-dir="1,0">→</button><button data-action="move" data-dir="0,-1">↑</button><button data-action="move" data-dir="0,1">↓</button><button data-action="remove" data-id="${p.id}">🗑 Remove</button></div></div>`;
 }
-function buildPanel(){return `<div class="lab">${editingTools()}<div class="board"><div class="board-controls"><button data-action="power">${circuit.powerOn?'⏻ Power off':'⚡ Power on'}</button><button data-action="view-mode">${player.settings.diagram?'🖼️ Picture':'📐 Diagram'} mode</button><button data-action="reset">↻ Reset</button></div>${drawing()}</div><div class="lab-status" role="status"><strong>${last.status==='ok'?'✅ Circuit operating':last.status==='short'?'⚠️ Overcurrent / short':last.status==='off'?'⏻ Supply off':last.status==='open'?'🔌 Circuit open':'⚠️ Circuit invalid'}</strong><p>${escapeHtml(feedback||last.warnings[0]||'Tap two yellow terminals to connect a wire. Tap a wire dot to disconnect.')}</p><small>Current and component behaviour use an educational DC resistive approximation.</small></div>${properties()}</div>`}
+function buildPanel(){
+ return `<div class="lab">${editingTools()}
+ <div class="board"><div class="board-controls"><button data-action="power">${circuit.powerOn?'⏻ Power off':'⚡ Power on'}</button><button data-action="view-mode">${player.settings.diagram?'🖼️ Picture':'📐 Diagram'} mode</button><button data-action="reset">↻ Reset</button><span class="zoom-indicator">${Math.round(zoom*100)}%</span></div>
+ <p class="board-help">👆 Tap A, then another terminal to connect. <span class="mobile-pan">↔ Swipe left and right to explore.</span></p>
+ <div class="circuit-scroll" tabindex="0" role="region" aria-label="Scrollable circuit workspace. Swipe horizontally to see all parts.">${drawing()}</div>
+ <div class="connection-instructions" role="status">${terminal?'🟠 '+escapeHtml(terminal.split(':')[0])+' terminal '+terminal.slice(-1).toUpperCase()+' selected. Now tap another terminal.':'🟡 Yellow A/B circles are terminals. Tap any two to connect a wire.'}</div>
+ <details class="connections"><summary>🔌 Connected wires (${circuit.wires.length}) — view or remove</summary>${connectionList()}</details>
+ </div>
+ <div class="lab-status" role="status"><strong>${last.status==='ok'?'✅ Circuit operating':last.status==='short'?'⚠️ Overcurrent / short':last.status==='off'?'⏻ Supply off':last.status==='open'?'🔌 Circuit open':'⚠️ Circuit invalid'}</strong><p>${escapeHtml(feedback||last.warnings[0]||'Tap terminals A and B to connect. Remove wires from the Connections list below the board.')}</p><small>Current and component behaviour use an educational DC resistive approximation.</small></div>
+ ${properties()}</div>`;
+}
 function workshopScreen(){return `<section class="panel"><div class="panel-title"><div><span class="eyebrow">FREE BUILD · INVENTOR’S WORKSHOP</span><h1>🔧 Your circuit laboratory</h1></div><button data-action="reference">📚 Components</button></div><p>Tap a component to add it. Tap two yellow terminals to wire them together. Move parts with the arrow controls.</p><div class="button-row">${STARTER_TEMPLATES.map(k=>`<button data-action="template" data-name="${k}">${escapeHtml(k)}</button>`).join('')}</div>${buildPanel()}<div class="button-row"><button class="primary" data-action="save-design">💾 Save</button><button data-action="load-design">📂 Load</button><button data-action="export-design">⬇ JSON</button><button data-action="import-design">⬆ Import</button><button data-action="export-svg">🖼 SVG</button><button data-action="print">🖨 Print</button></div><p class="fine">AC, capacitors, transistors, relay dynamics and code execution are not simulated. This is a safe educational model, not an engineering design approval tool.</p>${showReference?reference():''}</section>`}
 function reference(){return `<section class="reference"><h2>Component guide</h2>${CATALOG.map(c=>`<p><b>${c.emoji} ${escapeHtml(c.label)}</b> · From Year ${c.year}<br>${escapeHtml(c.model)}</p>`).join('')}<h3>Not available in the DC simulator</h3>${UNAVAILABLE.map(x=>`<p><b>${escapeHtml(x.label)}</b> — ${escapeHtml(x.reason)}</p>`).join('')}</section>`}
 function grownupsScreen(){
@@ -100,8 +135,12 @@ function grownupsScreen(){
  <h2>Progress and teaching</h2><p>${records.filter(r=>r.completed).length} missions recorded · ${assistedCount} completed with help · ${records.filter(r=>r.independent).length} recorded independently.</p><p>Independent is a local activity record, not a validated assessment of mastery.</p><p>Choose any Year 4–11 mission on the map. Every mission has a shareable code, such as <code>CQ4-01</code>, which can be opened via <code>?level=CQ4-01</code>.</p><div class="region-stats">${REGIONS.map(r=>`<div><b>Year ${r.year}</b> <span>${MISSIONS.filter(m=>m.year===r.year&&player.progress[m.id]?.completed).length} / 10</span></div>`).join('')}</div><h2>Display and reading</h2>${[['diagram','Use diagram symbols'],['big','Larger text'],['contrast','High contrast'],['reduce','Reduce animation']].map(([key,label])=>`<label class="check"><input type="checkbox" data-setting="${key}" ${(player.settings as unknown as Record<string,boolean>)[key]?'checked':''}> ${label}</label>`).join('')}<div class="button-row"><button data-action="speak" data-text="help">🔊 Preview voice</button><button data-action="stop-voice">⏹ Stop</button></div><p class="fine">Speech is optional and device-based; a British English voice is preferred where installed. There is no paid speech or account dependency.</p><h2>Local backups</h2><div class="button-row"><button data-action="backup">⬇ Export all player data</button><button data-action="restore">⬆ Restore backup</button><button data-action="clear-data">🗑 Delete local records</button></div><h2>Curriculum information</h2><p>Year 4 and Year 6 statutory electricity objectives; Year 5 is consolidation/enrichment. Years 7–9 are flexible Key Stage 3 bands. GCSE tagging here is introductory and requires per-board specification review before use as an exam tracker.</p><p>Only low-voltage virtual models are used. Never build or modify household mains wiring.</p><p>All data stays on this browser until you explicitly export it. Optional ChoreQuest synchronisation is not enabled until its verified authentication contract is available.</p><a href="https://www.gov.uk/government/publications/national-curriculum-in-england-science-programmes-of-study" target="_blank" rel="noopener noreferrer">Department for Education science curriculum</a></section>`;
 }
 function render(){
+ const previousBoard=app.querySelector<HTMLElement>('.circuit-scroll');
+ const oldLeft=previousBoard?.scrollLeft??0,oldTop=previousBoard?.scrollTop??0;
  player=store.profiles[store.active];document.body.classList.toggle('big-text',player.settings.big);document.body.classList.toggle('high-contrast',player.settings.contrast);document.body.classList.toggle('reduce-motion',player.settings.reduce);
  app.innerHTML=screen==='map'?mapScreen():screen==='workshop'?workshopScreen():screen==='mission'?missionScreen():grownupsScreen();
+ const nextBoard=app.querySelector<HTMLElement>('.circuit-scroll');
+ if(nextBoard){nextBoard.scrollLeft=oldLeft;nextBoard.scrollTop=oldTop;}
  document.querySelectorAll('[data-screen]').forEach(el=>el.setAttribute('aria-current',(el as HTMLElement).dataset.screen===screen?'page':'false'));
 }
 function download(name:string,contents:string,type='application/json'){const url=URL.createObjectURL(new Blob([contents],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
@@ -128,21 +167,22 @@ function onAction(el:HTMLElement){
  if(a==='hint'){assisted=true;feedback='Follow the loop: battery + → switch → load → battery −. Tap two terminals to join them. Use a starter template if helpful.';render();return}
  if(a==='side'){if(!player.side.includes(code))player.side.push(code);persist();feedback='You found a golden bolt!';render();return}
  if(a==='reference'){showReference=!showReference;render();return}
- if(a==='template'){circuit=template(el.dataset.name as Parameters<typeof template>[0]);history=[];future=[];last=simulate(circuit);selected=circuit.parts[0]?.id||'';render();return}
+ if(a==='template'){circuit=template(el.dataset.name as Parameters<typeof template>[0]);history=[];future=[];terminal='';last=simulate(circuit);selected=circuit.parts[0]?.id||'';render();return}
  if(a==='power'){mutate(()=>circuit.powerOn=!circuit.powerOn);return}
  if(a==='view-mode'){player.settings.diagram=!player.settings.diagram;persist();render();return}
  if(a==='reset'){mutate(()=>{circuit=mission&&screen==='mission'?startingCircuit(mission):template('torch')});return}
  if(a==='undo'){if(history.length){future.push(clone(circuit));circuit=history.pop()!;last=simulate(circuit);render()}return}
  if(a==='redo'){if(future.length){history.push(clone(circuit));circuit=future.pop()!;last=simulate(circuit);render()}return}
- if(a==='zoom-in'||a==='zoom-out'){zoom=Math.max(.7,Math.min(1.8,zoom+(a==='zoom-in'?.2:-.2)));render();return}
- if(a==='add'){const kind=el.dataset.kind as Kind;if(!CATALOG.some(c=>c.kind===kind))return;mutate(()=>{const id='p'+Date.now().toString(36)+Math.floor(Math.random()*1000).toString(36);const n=circuit.parts.length;const p=makePart(kind,id,110+(n%4)*115,120+Math.floor(n/4)*85);circuit.parts.push(p);selected=id;});return}
+ if(a==='zoom-in'||a==='zoom-out'){zoom=Math.max(.85,Math.min(1.65,zoom+(a==='zoom-in'?.15:-.15)));render();return}
+ if(a==='spread'){mutate(()=>{circuit.parts=spreadParts(circuit.parts);terminal='';feedback='Components spread apart. Your wires and electrical connections are unchanged.'});return}
+ if(a==='add'){const kind=el.dataset.kind as Kind;if(!CATALOG.some(c=>c.kind===kind))return;mutate(()=>{const id='p'+Date.now().toString(36)+Math.floor(Math.random()*1000).toString(36);const spot=nextFreePosition(circuit.parts);const p=makePart(kind,id,spot.x,spot.y);circuit.parts.push(p);selected=id;});return}
  if(a==='select-part'){selected=el.dataset.id||'';render();return}
- if(a==='terminal'){const t=el.dataset.terminal||'';if(!terminal){terminal=t;feedback='Now choose another terminal.';render();return}if(terminal!==t&&!circuit.wires.some(w=>(w.from===terminal&&w.to===t)||(w.to===terminal&&w.from===t))){const first=terminal;terminal='';mutate(()=>circuit.wires.push({from:first,to:t}));}else{terminal='';render();}return}
- if(a==='delete-wire'){mutate(()=>{circuit.wires.splice(Number(el.dataset.index),1)});return}
+ if(a==='terminal'){const t=el.dataset.terminal||'';if(!terminal){terminal=t;feedback='First terminal selected. Now tap another A or B circle.';render();return}if(terminal!==t&&!circuit.wires.some(w=>(w.from===terminal&&w.to===t)||(w.to===terminal&&w.from===t))){const first=terminal;terminal='';mutate(()=>{circuit.wires.push({from:first,to:t});feedback='Wire connected! The new green line shows the connection.'});}else{terminal='';feedback='Connection cancelled or already exists.';render();}return}
+ if(a==='delete-wire'){mutate(()=>{circuit.wires.splice(Number(el.dataset.index),1);feedback='Wire removed. Tap two terminals to make a new connection.'});return}
  if(a==='toggle'){mutate(()=>{const p=circuit.parts.find(x=>x.id===el.dataset.id);if(p)p.closed=!p.closed});return}
  if(a==='remove'){mutate(()=>{circuit.parts=circuit.parts.filter(x=>x.id!==el.dataset.id);circuit.wires=circuit.wires.filter(w=>!w.from.startsWith(el.dataset.id+':')&&!w.to.startsWith(el.dataset.id+':'));selected=circuit.parts[0]?.id||'';});return}
  if(a==='change-value'){const p=circuit.parts.find(x=>x.id===selected),v=toNumber((document.getElementById('component-value') as HTMLInputElement)?.value,NaN);if(p&&Number.isFinite(v)&&v>=.01&&v<=1000000)mutate(()=>{p.value=v});else {feedback='Enter a value between 0.01 and 1,000,000.';render()}return}
- if(a==='move'){const [dx,dy]=(el.dataset.dir||'0,0').split(',').map(Number);mutate(()=>{const p=circuit.parts.find(x=>x.id===selected);if(p){p.x=Math.max(60,Math.min(520,p.x+dx*20));p.y=Math.max(45,Math.min(365,p.y+dy*20));}});return}
+ if(a==='move'){const [dx,dy]=(el.dataset.dir||'0,0').split(',').map(Number);mutate(()=>{const p=circuit.parts.find(x=>x.id===selected);if(p){p.x=Math.max(105,Math.min(2400,p.x+dx*35));p.y=Math.max(115,Math.min(2400,p.y+dy*35));}});return}
  if(a==='save-design'){const n=window.prompt('Name this invention (a nickname only):','My invention');if(n){player.saved[n.slice(0,40)]=clone(circuit);persist();feedback='Saved locally: '+n.slice(0,40);render()}return}
  if(a==='load-design'){const names=Object.keys(player.saved);if(!names.length){feedback='No inventions saved yet.';render();return}const n=window.prompt('Choose a saved name:\n'+names.join('\n'),names[0]);if(n&&player.saved[n])useDesign(JSON.stringify(player.saved[n]));return}
  if(a==='export-design'){download('circuitquest-invention.json',JSON.stringify(circuit,null,2));return}
