@@ -152,11 +152,11 @@ function valueResistance(p:Part):number {
 function clean(x:number){return Math.abs(x)<1e-10?0:Math.round(x*1e6)/1e6}
 export function makePart(kind:Kind,id:string,x=50,y=50):Part{return {kind,id,x,y,value:defaultValue(kind),closed:kind==='switch'?true:undefined}}
 export function template(kind:'torch'|'doorbell'|'motor'|'led'|'series'|'parallel'|'meter'='torch'):Circuit{
- const b=makePart('cell','battery',40,110),s=makePart('switch','switch',170,110),l=makePart(kind==='doorbell'?'buzzer':kind==='motor'?'motor':kind==='led'?'led':'lamp','load',300,110);
+ const b=makePart('cell','battery',170,245),s=makePart('switch','switch',470,245),l=makePart(kind==='doorbell'?'buzzer':kind==='motor'?'motor':kind==='led'?'led':'lamp','load',775,245);
  const parts:Part[]=[b,s,l];const wires:Wire[]=[{from:'battery:a',to:'switch:a'},{from:'switch:b',to:'load:a'},{from:'load:b',to:'battery:b'}];
- if(kind==='series'){parts.push(makePart('lamp','load2',440,110));wires[2]={from:'load:b',to:'load2:a'};wires.push({from:'load2:b',to:'battery:b'});}
- if(kind==='parallel'){parts.push(makePart('lamp','load2',300,245));wires.push({from:'switch:b',to:'load2:a'},{from:'load2:b',to:'battery:b'});}
- if(kind==='meter'){parts.push(makePart('voltmeter','meter',330,245));wires.push({from:'load:a',to:'meter:a'},{from:'load:b',to:'meter:b'});}
- if(kind==='led')parts.push(makePart('resistor','limiter',230,230)),wires.splice(1,1,{from:'switch:b',to:'limiter:a'},{from:'limiter:b',to:'load:a'});
+ if(kind==='series'){b.x=165;s.x=405;l.x=645;parts.push(makePart('lamp','load2',865,245));wires[2]={from:'load:b',to:'load2:a'};wires.push({from:'load2:b',to:'battery:b'});}
+ if(kind==='parallel'){parts.push(makePart('lamp','load2',775,435));wires.push({from:'switch:b',to:'load2:a'},{from:'load2:b',to:'battery:b'});}
+ if(kind==='meter'){parts.push(makePart('voltmeter','meter',775,435));wires.push({from:'load:a',to:'meter:a'},{from:'load:b',to:'meter:b'});}
+ if(kind==='led')parts.push(makePart('resistor','limiter',605,425)),wires.splice(1,1,{from:'switch:b',to:'limiter:a'},{from:'limiter:b',to:'load:a'});
  return {parts,wires,powerOn:true};
 }
