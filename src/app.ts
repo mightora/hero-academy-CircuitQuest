@@ -1,6 +1,6 @@
 import {CATALOG,UNAVAILABLE,template,makePart,simulate,validate,type Circuit,type Kind,type Part} from './engine.js';
 import {REGIONS,MISSIONS,SIDE_ACTIVITIES,STARTER_TEMPLATES,startingCircuit,practiceQuestion,type Mission} from './missions.js';
-import {BOARD,viewport,terminalPoint,wireRoute,spreadParts,nextFreePosition} from './board.js';
+import {BOARD,viewport,wireRoute,spreadParts,nextFreePosition} from './board.js';
 
 type RecordProgress={completed:boolean;independent:boolean;attempts:number;assisted:boolean};
 type Profile={name:string;suit:string;progress:Record<string,RecordProgress>;saved:Record<string,Circuit>;minutes:number;startedAt:number;settings:{diagram:boolean;big:boolean;contrast:boolean;reduce:boolean};side:string[]};
@@ -136,11 +136,14 @@ function grownupsScreen(){
 }
 function render(){
  const previousBoard=app.querySelector<HTMLElement>('.circuit-scroll');
+ const wasConnectionsOpen=app.querySelector<HTMLDetailsElement>('.connections')?.open??false;
  const oldLeft=previousBoard?.scrollLeft??0,oldTop=previousBoard?.scrollTop??0;
  player=store.profiles[store.active];document.body.classList.toggle('big-text',player.settings.big);document.body.classList.toggle('high-contrast',player.settings.contrast);document.body.classList.toggle('reduce-motion',player.settings.reduce);
  app.innerHTML=screen==='map'?mapScreen():screen==='workshop'?workshopScreen():screen==='mission'?missionScreen():grownupsScreen();
  const nextBoard=app.querySelector<HTMLElement>('.circuit-scroll');
  if(nextBoard){nextBoard.scrollLeft=oldLeft;nextBoard.scrollTop=oldTop;}
+ const nextConnections=app.querySelector<HTMLDetailsElement>('.connections');
+ if(nextConnections)nextConnections.open=wasConnectionsOpen;
  document.querySelectorAll('[data-screen]').forEach(el=>el.setAttribute('aria-current',(el as HTMLElement).dataset.screen===screen?'page':'false'));
 }
 function download(name:string,contents:string,type='application/json'){const url=URL.createObjectURL(new Blob([contents],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
