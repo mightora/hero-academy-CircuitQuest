@@ -1,0 +1,18 @@
+{
+  "name": "Hero Academy CircuitQuest: The Spark Isles",
+  "short_name": "CircuitQuest",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f5ec",
+  "theme_color": "#14353b",
+  "description": "A local-first electrical engineering adventure for young explorers.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
